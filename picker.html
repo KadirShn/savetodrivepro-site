@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Save to Drive Pro – choose a folder</title>
+    <style>
+      html, body { margin: 0; height: 100%; }
+      body { display: grid; place-items: center; font: 15px system-ui, sans-serif; background: #f6f7fb; color: #333; }
+      @media (prefers-color-scheme: dark) { body { background: #1b1c22; color: #ddd; } }
+    </style>
+  </head>
+  <body>
+    <p id="status">Loading Google Drive…</p>
+    <script>
+      // Folder picker for the Save to Drive Pro Chrome extension (Pro+ "choose a folder from Drive").
+      // Opened by the extension (chrome.identity.launchWebAuthFlow) with, in the address fragment:
+      //   token    the user's OAuth access token (drive.file scope) for Google's Picker
+      //   redirect the extension's own https://<id>.chromiumapp.org/ address
+      //   state    a random value the extension checks when the answer comes back
+      //   lang     the browser language
+      // The fragment is never sent to any server and is removed from the address bar right away.
+      // The only answer is the chosen folder's ID, sent back to the extension's redirect address.
+      // No data is stored, no other site is contacted besides Google's Picker.
+      (() => {
+        'use strict';
+        /** Browser API key, restricted to this site and to the Google Picker API. Not a secret. */
+        const API_KEY = 'AIzaSyAP_onle6bAWNkOF5OC1wfQ4FQxDNicHxg';
+        /** Google Cloud project number of the extension (gives the extension access to the chosen folder). */
+        const APP_ID = '108201306861';
+        const FOLDER = 'application/vnd.google-apps.folder';
+
+        const params = new URLSearchParams(location.hash.slice(1));
+        history.replaceState(null, '', location.pathname);
+        const token = params.get('token');
+        const state = params.get('state') || '';
+        const redirect = params.get('redirect') || '';
+        const lang = /^[a-z]{2,3}([-_][A-Za-z]{2})?$/.test(params.get('lang') || '') ? params.get('lang').replace('_', '-') : 'en';
+        const turkish = lang.toLowerCase().startsWith('tr');
+        const status = document.getElementById('status');
+        if (turkish) {
+          document.documentElement.lang = 'tr';
+          document.title = 'Save to Drive Pro – klasör seç';
+          status.textContent = 'Google Drive yükleniyor…';
+        }
+
+        // Answers only ever go to a Chrome extension's own redirect address.
+        if (!token || !/^https:\/\/[a-p]{32}\.chromiumapp\.org\/$/.test(redirect)) {
+          status.textContent = turkish
+            ? 'Bu sayfa Save to Drive Pro eklentisinden açılır.'
+            : 'This page is opened from the Save to Drive Pro extension.';
+          return;
+        }
+        const finish = (result) => location.replace(`${redirect}#${new URLSearchParams({ state, ...result })}`);
+
+        function build() {
+          const picker = google.picker;
+          const folders = () =>
+            new picker.DocsView(picker.ViewId.FOLDERS).setIncludeFolders(true).setSelectFolderEnabled(true).setMimeTypes(FOLDER);
+          new picker.PickerBuilder()
+            .addView(folders().setParent('root'))
+            .addView(folders().setEnableDrives(true))
+            .enableFeature(picker.Feature.SUPPORT_DRIVES)
+            .setOAuthToken(token)
+            .setDeveloperKey(API_KEY)
+            .setAppId(APP_ID)
+            .setLocale(lang)
+            .setTitle(turkish ? 'Kaydedilecek klasörü seçin' : 'Choose the folder to save into')
+            .setSize(Math.max(566, window.innerWidth - 24), Math.max(350, window.innerHeight - 24))
+            .setCallback((data) => {
+              const action = data[picker.Response.ACTION];
+              if (action === picker.Action.PICKED) {
+                const doc = data[picker.Response.DOCUMENTS][0];
+                finish({ id: doc[picker.Document.ID] });
+              } else if (action === picker.Action.CANCEL) {
+                finish({ error: 'cancelled' });
+              }
+            })
+            .build()
+            .setVisible(true);
+          status.textContent = '';
+        }
+
+        const script = document.createElement('script');
+        script.src = 'https://apis.google.com/js/api.js';
+        script.onload = () =>
+          gapi.load('picker', { callback: build, onerror: () => finish({ error: 'picker_load_failed' }) });
+        script.onerror = () => finish({ error: 'picker_load_failed' });
+        document.head.append(script);
+      })();
+    </script>
+  </body>
+</html>
